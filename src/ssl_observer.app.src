@@ -1,11 +1,12 @@
 {application, ssl_observer,
- [{description, "An OTP application"}
+ [{description, "SSL observer"}
  ,{vsn, "0.1.0"}
  ,{registered, []}
  ,{mod, {'ssl_observer_app', []}}
  ,{applications,
    [kernel
    ,stdlib
+   ,ssl
    ]}
  ,{env,[]}
  ,{modules, []}
