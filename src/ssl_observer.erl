@@ -8,7 +8,7 @@
 %% API
 -export([add_callback_module/1]).
 
--callback handshake_finished(Reason :: ok | closed | {tls_alert, string()},
+-callback handshake_finished(Reason :: ok | {integer(), closed} | {integer(), {tls_alert, string()}},
     Version :: string(),
     Ciphers :: [ssl:erl_cipher_suite()]) ->
     no_return().

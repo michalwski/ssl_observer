@@ -107,9 +107,9 @@ handle_trace_return_from(Pid, {tls_handshake,hello,4}, Result,
     Ciphers = [ssl:suite_definition(CipherBin) || CipherBin <- CiphersBin],
 
     case Result of
-        {alert, _, _, _} = Alert ->
+        {alert, _, Code, _} = Alert ->
             Reason = ssl_alert:reason_code(Alert, ok),
-            notify_handshake(Reason, Version, Ciphers, Callbacks);
+            notify_handshake({Code, Reason}, Version, Ciphers, Callbacks);
         _ ->
             notify_handshake(ok, Version, Ciphers, Callbacks)
     end,
