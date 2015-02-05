@@ -1,9 +1,9 @@
 ssl_observer
 =====
 
-An OTP application
+An OTP application tracing SSL events
 
 Build
 -----
 
-    $ rebar3 compile
+    $ ./rebar3 compile
