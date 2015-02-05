@@ -102,16 +102,19 @@ handle_trace_call(_Pid, _Call, State) ->
 handle_trace_return_from(Pid, {tls_handshake,hello,4}, Result,
                          #state{handshakes = Handshakes,
                                 callbacks = Callbacks} = State) ->
-    {VersionRaw, CiphersBin} = dict:fetch(Pid, Handshakes),
-    Version = tls_record:protocol_version(VersionRaw),
-    Ciphers = [ssl:suite_definition(CipherBin) || CipherBin <- CiphersBin],
 
     case Result of
         {alert, _, Code, _} = Alert ->
+            {VersionRaw, CiphersBin} = dict:fetch(Pid, Handshakes),
+            Version = tls_record:protocol_version(VersionRaw),
+            Ciphers = [ssl:suite_definition(CipherBin) || CipherBin <- CiphersBin],
             Reason = ssl_alert:reason_code(Alert, ok),
             notify_handshake({Code, Reason}, Version, Ciphers, Callbacks);
+        {Version, {_Type, #session{cipher_suite = CipherSuite} = _Session}, _ConnectionStates, _ServerHelloExt} ->
+            notify_handshake(ok, tls_record:protocol_version(Version),
+                             ssl:suite_definition(CipherSuite), Callbacks);
         _ ->
-            notify_handshake(ok, Version, Ciphers, Callbacks)
+            ok
     end,
     State#state{handshakes = dict:erase(Pid, Handshakes)};
 handle_trace_return_from(_Pid, _Function, _Result, State) ->
