@@ -20,7 +20,8 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {handshakes = dict:new(),
-                callbacks = []}).
+                callbacks = [],
+                tls_connection_sup}).
 
 -include_lib("ssl/src/tls_handshake.hrl").
 
@@ -46,9 +47,10 @@ add_callback_module(Module) ->
 init(Parent) ->
     register(?SERVER, self()),
     proc_lib:init_ack(Parent, {ok, self()}),
+    process_flag(trap_exit, true),
     Deb = sys:debug_options([]),
-    start_tracing(),
-    loop(Parent, #state{}, Deb).
+    TLSConnectionSup = start_tracing(),
+    loop(Parent, #state{tls_connection_sup = TLSConnectionSup}, Deb).
 
 loop(Parent, State, Deb) ->
     receive
@@ -67,6 +69,8 @@ loop(Parent, State, Deb) ->
         {add_callback_module, Module} ->
             Callbacks = State#state.callbacks,
             loop(Parent, State#state{callbacks = [Module | Callbacks]}, Deb);
+        {'EXIT', Parent, Reason} ->
+            system_terminate(Reason, Parent, Deb, State);
         _Msg ->
             %% ignore other messages
             loop(Parent, State, Deb)
@@ -78,7 +82,9 @@ loop(Parent, State, Deb) ->
 system_continue(Parent, Deb, State) ->
     loop(Parent, State, Deb).
 
-system_terminate(Reason, _Parent, _Deb, _Chs) ->
+system_terminate(Reason, _Parent, _Deb, #state{tls_connection_sup = TLSConnectionSup}) ->
+    unset_tracepattern(),
+    set_tracing(TLSConnectionSup, false, erlang:whereis(?SERVER)),
     exit(Reason).
 
 system_get_state(State) ->
@@ -123,22 +129,25 @@ handle_trace_return_from(_Pid, _Function, _Result, State) ->
 start_tracing() ->
     TLSConnectionSup = erlang:whereis(tls_connection_sup),
     TLSTracer = erlang:whereis(?SERVER),
-    erlang:trace(TLSConnectionSup, true,
-                 [set_on_spawn, call, return_to, {tracer, TLSTracer}]),
+    set_tracing(TLSConnectionSup, true, TLSTracer),
     code:ensure_loaded(tls_handshake),
-    set_tracing().
+    set_tracepattern(),
+    TLSConnectionSup.
 
 check_tracing() ->
     case erlang:trace_info({tls_handshake, hello, 4}, match_spec) of
         {match_spec, R} when R =:= false; R =:= undefined ->
-            set_tracing();
+            set_tracepattern();
         _ ->
             ok
     end.
 
-set_tracing() ->
+set_tracepattern() ->
     MS = [{'_',[],[{return_trace}]}],
     erlang:trace_pattern({tls_handshake, hello, '_'}, MS, [local]).
+
+unset_tracepattern() ->
+    erlang:trace_pattern({tls_handshake, hello, '_'}, false, [local]).
 
 notify_handshake(Reason, Version, Ciphers, Callbacks) ->
     F = fun(Module) ->
@@ -146,3 +155,6 @@ notify_handshake(Reason, Version, Ciphers, Callbacks) ->
     end,
     lists:foreach(F, Callbacks).
 
+set_tracing(TLSConnectionSup, How, TLSTracer) ->
+    erlang:trace(TLSConnectionSup, How,
+                 [set_on_spawn, call, return_to, {tracer, TLSTracer}]).
