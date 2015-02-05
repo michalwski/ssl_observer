@@ -52,7 +52,7 @@ init(Parent) ->
     TLSConnectionSup = start_tracing(),
     loop(Parent, #state{tls_connection_sup = TLSConnectionSup}, Deb).
 
-loop(Parent, State, Deb) ->
+loop(Parent, #state{tls_connection_sup = TLSConnSup} = State, Deb) ->
     receive
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent,
@@ -71,6 +71,8 @@ loop(Parent, State, Deb) ->
             loop(Parent, State#state{callbacks = [Module | Callbacks]}, Deb);
         {'EXIT', Parent, Reason} ->
             system_terminate(Reason, Parent, Deb, State);
+        {'EXIT', TLSConnSup, Reason} ->
+            system_terminate({tls_connection_sup, Reason}, Parent, Deb, State);
         _Msg ->
             %% ignore other messages
             loop(Parent, State, Deb)
@@ -128,6 +130,7 @@ handle_trace_return_from(_Pid, _Function, _Result, State) ->
 
 start_tracing() ->
     TLSConnectionSup = erlang:whereis(tls_connection_sup),
+    erlang:link(TLSConnectionSup),
     TLSTracer = erlang:whereis(?SERVER),
     set_tracing(TLSConnectionSup, true, TLSTracer),
     code:ensure_loaded(tls_handshake),
