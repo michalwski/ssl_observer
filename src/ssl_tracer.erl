@@ -40,10 +40,13 @@
 start_link() ->
     proc_lib:start_link(?MODULE, init, [self()]).
 
+-spec add_callback_module(module()) -> ok.
 add_callback_module(Module) ->
     Pid = erlang:whereis(?SERVER),
-    Pid ! {add_callback_module, Module}.
+    Pid ! {add_callback_module, Module},
+    ok.
 
+-spec init(pid()) -> no_return().
 init(Parent) ->
     register(?SERVER, self()),
     proc_lib:init_ack(Parent, {ok, self()}),
@@ -70,9 +73,9 @@ loop(Parent, #state{tls_connection_sup = TLSConnSup} = State, Deb) ->
             Callbacks = State#state.callbacks,
             loop(Parent, State#state{callbacks = [Module | Callbacks]}, Deb);
         {'EXIT', Parent, Reason} ->
-            system_terminate(Reason, Parent, Deb, State);
+            terminate(Reason, State);
         {'EXIT', TLSConnSup, Reason} ->
-            system_terminate({tls_connection_sup, Reason}, Parent, Deb, State);
+            terminate({tls_connection_sup, Reason}, State);
         _Msg ->
             %% ignore other messages
             loop(Parent, State, Deb)
@@ -81,17 +84,25 @@ loop(Parent, #state{tls_connection_sup = TLSConnSup} = State, Deb) ->
         loop(Parent, State, Deb)
     end.
 
+-spec system_continue(pid(), [sys:dbg_opt()], term()) -> none().
 system_continue(Parent, Deb, State) ->
     loop(Parent, State, Deb).
 
-system_terminate(Reason, _Parent, _Deb, #state{tls_connection_sup = TLSConnectionSup}) ->
+-spec system_terminate(term(), pid(), [sys:dbg_opt()], term()) -> no_return().
+system_terminate(Reason, _Parent, _Deb, State) ->
+    terminate(Reason, State).
+
+-spec terminate(term(), term()) -> no_return().
+terminate(Reason, #state{tls_connection_sup = TLSConnectionSup}) ->
     unset_tracepattern(),
     set_tracing(TLSConnectionSup, false, erlang:whereis(?SERVER)),
     exit(Reason).
 
+-spec system_get_state(term()) -> {ok, term()}.
 system_get_state(State) ->
     {ok, State}.
 
+-spec system_replace_state(fun((term()) -> term()), term()) -> {ok, term(), term()}.
 system_replace_state(StateFun, State) ->
     NState = StateFun(State),
     {ok, NState, NState}.
@@ -134,10 +145,11 @@ start_tracing() ->
     erlang:link(TLSConnectionSup),
     TLSTracer = erlang:whereis(?SERVER),
     set_tracing(TLSConnectionSup, true, TLSTracer),
-    code:ensure_loaded(tls_handshake),
+    _ = code:ensure_loaded(tls_handshake),
     set_tracepattern(),
     TLSConnectionSup.
 
+-spec check_tracing() -> no_return().
 check_tracing() ->
     case erlang:trace_info({tls_handshake, hello, 4}, match_spec) of
         {match_spec, R} when R =:= false; R =:= undefined ->
