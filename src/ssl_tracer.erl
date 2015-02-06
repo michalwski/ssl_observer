@@ -100,8 +100,9 @@ handle_trace_call(Pid, {tls_handshake, hello,
                          [#client_hello{client_version = Version,
                                         cipher_suites = CipherSuites},
                           _, _, _]},
-                  #state{handshakes = Handshakes} = State) ->
+                  #state{handshakes = Handshakes, callbacks = Callbakcs} = State) ->
     NewHandshakes = dict:store(Pid, {Version, CipherSuites}, Handshakes),
+    notify_handshake_started(tls_record:protocol_version(Version), Callbakcs),
     State#state{handshakes = NewHandshakes};
 
 handle_trace_call(_Pid, _Call, State) ->
@@ -117,9 +118,9 @@ handle_trace_return_from(Pid, {tls_handshake,hello,4}, Result,
             Version = tls_record:protocol_version(VersionRaw),
             Ciphers = [ssl:suite_definition(CipherBin) || CipherBin <- CiphersBin],
             Reason = ssl_alert:reason_code(Alert, ok),
-            notify_handshake({Code, Reason}, Version, Ciphers, Callbacks);
+            notify_handshake_finished({Code, Reason}, Version, Ciphers, Callbacks);
         {Version, {_Type, #session{cipher_suite = CipherSuite} = _Session}, _ConnectionStates, _ServerHelloExt} ->
-            notify_handshake(ok, tls_record:protocol_version(Version),
+            notify_handshake_finished(ok, tls_record:protocol_version(Version),
                              ssl:suite_definition(CipherSuite), Callbacks);
         _ ->
             ok
@@ -152,11 +153,15 @@ set_tracepattern() ->
 unset_tracepattern() ->
     erlang:trace_pattern({tls_handshake, hello, '_'}, false, [local]).
 
-notify_handshake(Reason, Version, Ciphers, Callbacks) ->
-    F = fun(Module) ->
-        Module:handshake_finished(Reason, Version, Ciphers)
-    end,
-    lists:foreach(F, Callbacks).
+notify_handshake_finished(Reason, Version, Ciphers, Callbacks) ->
+    lists:foreach(fun(M) ->
+        M:handshake_finished(Reason, Version, Ciphers)
+    end, Callbacks).
+
+notify_handshake_started(Version, Callbacks) ->
+    lists:foreach(fun(M) ->
+        M:handshake_started(Version)
+    end, Callbacks).
 
 set_tracing(TLSConnectionSup, How, TLSTracer) ->
     erlang:trace(TLSConnectionSup, How,

@@ -56,6 +56,7 @@ all_ciphers_and_protocols(Config) ->
     ProtocolErrorSpec = [{70, '_'}, '_', '_'],
     CipherErrorSpec = [{71, '_'}, '_', '_'],
     meck:expect(test_callback, handshake_finished, [{OkSpec, ok}, {CipherErrorSpec, ok}, {ProtocolErrorSpec, ok}]),
+    meck:expect(test_callback, handshake_started, 1, ok),
     ssl_observer:add_callback_module(test_callback),
     erlang:link(erlang:whereis(ssl_tracer)),
     Port = ?config(port, Config),
@@ -77,10 +78,19 @@ all_ciphers_and_protocols(Config) ->
 
     [ssl:close(Socket) || {_, _, {ok, Socket}} <- CipherConn],
 
+    CiphersLen = length(Ciphers),
+
+    ConnLen = length(CipherConn),
+    ConnLen = meck:num_calls(test_callback, handshake_started, 1),
+
+    CiphersLen = meck:num_calls(test_callback, handshake_started, [sslv3]),
+    CiphersLen = meck:num_calls(test_callback, handshake_started, [tlsv1]),
+    CiphersLen = meck:num_calls(test_callback, handshake_started, ['tlsv1.1']),
+    CiphersLen = meck:num_calls(test_callback, handshake_started, ['tlsv1.2']),
+
     AllowedLen = length(Allowed),
     AllowedLen = meck:num_calls(test_callback, handshake_finished, OkSpec),
 
-    CiphersLen = length(Ciphers),
     ProtocolErrors = CiphersLen, %% every cipher with sslv3
 
     ProtocolErrors = meck:num_calls(test_callback, handshake_finished, ProtocolErrorSpec),
