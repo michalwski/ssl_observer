@@ -127,7 +127,7 @@ handle_trace_return_from(Pid, {tls_handshake,hello,4}, Result,
         {alert, _, Code, _} = Alert ->
             {VersionRaw, CiphersBin} = dict:fetch(Pid, Handshakes),
             Version = tls_record:protocol_version(VersionRaw),
-            Ciphers = [ssl:suite_definition(CipherBin) || CipherBin <- CiphersBin],
+            Ciphers = [safe_suite_definition(CipherBin) || CipherBin <- CiphersBin],
             Reason = ssl_alert:reason_code(Alert, ok),
             notify_handshake_finished({Code, Reason}, Version, Ciphers, Callbacks);
         {Version, {_Type, #session{cipher_suite = CipherSuite} = _Session}, _ConnectionStates, _ServerHelloExt} ->
@@ -156,6 +156,14 @@ check_tracing() ->
             set_tracepattern();
         _ ->
             ok
+    end.
+
+safe_suite_definition(CipherBin) ->
+    try
+        ssl:suite_definition(CipherBin)
+    catch
+        Error:_ ->
+            {error, Error, CipherBin}
     end.
 
 set_tracepattern() ->
