@@ -113,7 +113,7 @@ handle_trace_call(Pid, {tls_handshake, hello,
                           _, _, _]},
                   #state{handshakes = Handshakes, callbacks = Callbakcs} = State) ->
     NewHandshakes = dict:store(Pid, {Version, CipherSuites}, Handshakes),
-    notify_handshake_started(tls_record:protocol_version(Version), Callbakcs),
+    notify_handshake_started(tls_protocol_version(Version), Callbakcs),
     State#state{handshakes = NewHandshakes};
 
 handle_trace_call(_Pid, _Call, State) ->
@@ -126,12 +126,12 @@ handle_trace_return_from(Pid, {tls_handshake,hello,4}, Result,
     case Result of
         {alert, _, Code, _} = Alert ->
             {VersionRaw, CiphersBin} = dict:fetch(Pid, Handshakes),
-            Version = tls_record:protocol_version(VersionRaw),
+            Version = tls_protocol_version(VersionRaw),
             Ciphers = [safe_suite_definition(CipherBin) || CipherBin <- CiphersBin],
             Reason = ssl_alert:reason_code(Alert, ok),
             notify_handshake_finished({Code, Reason}, Version, Ciphers, Callbacks);
         {Version, {_Type, #session{cipher_suite = CipherSuite} = _Session}, _ConnectionStates, _ServerHelloExt} ->
-            notify_handshake_finished(ok, tls_record:protocol_version(Version),
+            notify_handshake_finished(ok, tls_protocol_version(Version),
                              ssl:suite_definition(CipherSuite), Callbacks);
         _ ->
             ok
@@ -186,3 +186,12 @@ notify_handshake_started(Version, Callbacks) ->
 set_tracing(TLSConnectionSup, How, TLSTracer) ->
     erlang:trace(TLSConnectionSup, How,
                  [set_on_spawn, call, return_to, {tracer, TLSTracer}]).
+
+tls_protocol_version({0,2}) ->
+    sslv2;
+tls_protocol_version(Version) ->
+    try
+        tls_record:protocol_version(Version)
+    catch _:_ ->
+        unknown
+    end.
